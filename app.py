@@ -1,27 +1,3 @@
-# เพิ่มตรงส่วนบนของ app.py
-def test_binance_connection():
-    """ทดสอบการเชื่อมต่อ Binance API"""
-    try:
-        response = scanner.requests.get(
-            'https://fapi.binance.com/fapi/v1/ping',
-            timeout=10
-        )
-        return response.status_code == 200
-    except:
-        return False
-
-# เพิ่มตรง Analyze Coin tab
-with tab2:
-    # ทดสอบการเชื่อมต่อก่อน
-    if not test_binance_connection():
-        st.error("⚠️ ไม่สามารถเชื่อมต่อ Binance API ได้")
-        st.info("💡 สาเหตุ: Streamlit Cloud อาจถูก block โดย Binance")
-        st.warning("🔄 แนะนำ: ใช้ Ngrok แทน (รันบนคอมของคุณ)")
-    else:
-        st.success("✅ เชื่อมต่อ Binance API ได้")
-        
-        # ... โค้ด Analyze เดิม ...
-
 import streamlit as st
 import pandas as pd
 import numpy as np
