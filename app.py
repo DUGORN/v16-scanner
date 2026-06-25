@@ -254,6 +254,16 @@ def analyze_single_coin(symbol):
         symbol = symbol.strip().upper()
         if not symbol.endswith('.P'):
             symbol += '.P'
+        # ทดสอบการเชื่อมต่อ
+        try:
+            test_response = scanner.requests.get(
+                'https://fapi.binance.com/fapi/v1/ping',
+                timeout=5
+            )
+            if test_response.status_code != 200:
+                return None, "⚠️ ไม่สามารถเชื่อมต่อ Binance API ได้"
+        except:
+            return None, "⚠️ Binance API ไม่ตอบสนอง"
         
         ticker_24h = get_24h_ticker(symbol)
         
