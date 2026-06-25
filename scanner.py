@@ -6,13 +6,27 @@ def get_klines(symbol, interval, limit=100):
     """ดึงข้อมูล candles จาก Binance"""
     try:
         api_symbol = symbol.replace('.P', '')
-        response = requests.get(
+        
+        # เพิ่ม headers เพื่อหลีกเลี่ยงการ block
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+        }
+        
+        response = scanner.requests.get(
             'https://fapi.binance.com/fapi/v1/klines',
             params={'symbol': api_symbol, 'interval': interval, 'limit': limit},
-            timeout=10
+            headers=headers,
+            timeout=15  # เพิ่ม timeout
         )
-        return response.json()
-    except:
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Binance API Error: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"Error fetching klines: {e}")
         return None
 
 def calculate_ema(data, period):
