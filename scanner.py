@@ -6,27 +6,13 @@ def get_klines(symbol, interval, limit=100):
     """ดึงข้อมูล candles จาก Binance"""
     try:
         api_symbol = symbol.replace('.P', '')
-        
-        # เพิ่ม headers เพื่อหลีกเลี่ยงการ block
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'application/json',
-        }
-        
-        response = scanner.requests.get(
+        response = requests.get(
             'https://fapi.binance.com/fapi/v1/klines',
             params={'symbol': api_symbol, 'interval': interval, 'limit': limit},
-            headers=headers,
-            timeout=15  # เพิ่ม timeout
+            timeout=10
         )
-        
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(f"Binance API Error: {response.status_code}")
-            return None
-    except Exception as e:
-        print(f"Error fetching klines: {e}")
+        return response.json()
+    except:
         return None
 
 def calculate_ema(data, period):
@@ -736,3 +722,188 @@ Position Size
 Confidence: [HIGH/MEDIUM/LOW]"""
     
     return prompt
+# ============================================================================
+# 🆕 MACRO CONTEXT ANALYSIS - V16.1 ENHANCED
+# ============================================================================
+
+def analyze_macro_context(symbol, current_price):
+    """วิเคราะห์ภาพใหญ่ Weekly/Monthly เพื่อป้องกันเทรดผิดทาง"""
+    try:
+        # ดึงข้อมูล Weekly (1 ปี) และ Monthly (2 ปี)
+        tf_1w = get_klines(symbol, '1w', 52)
+        tf_1M = get_klines(symbol, '1M', 24)
+        
+        if not tf_1w or not tf_1M:
+            return None
+        
+        # ===== 1. หา 52-Week High/Low =====
+        weekly_highs = [float(c[2]) for c in tf_1w]
+        weekly_lows = [float(c[3]) for c in tf_1w]
+        
+        weekly_high_52w = max(weekly_highs)
+        weekly_low_52w = min(weekly_lows)
+        
+        # ===== 2. หา 24-Month High/Low =====
+        monthly_highs = [float(c[2]) for c in tf_1M]
+        monthly_lows = [float(c[3]) for c in tf_1M]
+        
+        monthly_high_24m = max(monthly_highs)
+        monthly_low_24m = min(monthly_lows)
+        
+        # ===== 3. คำนวณระยะห่าง (%) =====
+        dist_to_weekly_high = (current_price - weekly_high_52w) / weekly_high_52w * 100
+        dist_to_weekly_low = (current_price - weekly_low_52w) / weekly_low_52w * 100
+        dist_to_monthly_high = (current_price - monthly_high_24m) / monthly_high_24m * 100
+        dist_to_monthly_low = (current_price - monthly_low_24m) / monthly_low_24m * 100
+        
+        # ===== 4. หา Weekly/Monthly EMA =====
+        weekly_ema_50 = calculate_ema(tf_1w, 50)
+        monthly_ema_20 = calculate_ema(tf_1M, 20)
+        
+        # ===== 5. วิเคราะห์ Weekly Trend =====
+        if len(tf_1w) >= 20:
+            recent_closes = [float(c[4]) for c in tf_1w[-20:]]
+            weekly_trend = "UPTREND" if recent_closes[-1] > recent_closes[0] else "DOWNTREND"
+        else:
+            weekly_trend = "UNKNOWN"
+        
+        # ===== 6. ตรวจสอบ Major Levels (ภายใน 5%) =====
+        near_major_support = False
+        near_major_resistance = False
+        major_level_type = None
+        major_level_distance = 0
+        
+        # ใกล้ Weekly Low (ภายใน 5%)
+        if abs(dist_to_weekly_low) <= 5:
+            near_major_support = True
+            major_level_type = "52W_LOW"
+            major_level_distance = dist_to_weekly_low
+        
+        # ใกล้ Monthly Low (ภายใน 5%)
+        elif abs(dist_to_monthly_low) <= 5:
+            near_major_support = True
+            major_level_type = "24M_LOW"
+            major_level_distance = dist_to_monthly_low
+        
+        # ใกล้ Weekly High (ภายใน 5%)
+        elif abs(dist_to_weekly_high) <= 5:
+            near_major_resistance = True
+            major_level_type = "52W_HIGH"
+            major_level_distance = dist_to_weekly_high
+        
+        # ใกล้ Monthly High (ภายใน 5%)
+        elif abs(dist_to_monthly_high) <= 5:
+            near_major_resistance = True
+            major_level_type = "24M_HIGH"
+            major_level_distance = dist_to_monthly_high
+        
+        # ===== 7. ตรวจสอบ Weekly EMA 50 =====
+        dist_to_weekly_ema = 0
+        if weekly_ema_50:
+            dist_to_weekly_ema = (current_price - weekly_ema_50) / weekly_ema_50 * 100
+            if abs(dist_to_weekly_ema) <= 3 and not near_major_support and not near_major_resistance:
+                if current_price > weekly_ema_50:
+                    near_major_support = True
+                    major_level_type = "W_EMA50"
+                    major_level_distance = dist_to_weekly_ema
+                else:
+                    near_major_resistance = True
+                    major_level_type = "W_EMA50"
+                    major_level_distance = dist_to_weekly_ema
+        
+        # ===== 8. ตรวจสอบ Monthly EMA 20 =====
+        dist_to_monthly_ema = 0
+        if monthly_ema_20:
+            dist_to_monthly_ema = (current_price - monthly_ema_20) / monthly_ema_20 * 100
+            if abs(dist_to_monthly_ema) <= 3 and not near_major_support and not near_major_resistance:
+                if current_price > monthly_ema_20:
+                    near_major_support = True
+                    major_level_type = "M_EMA20"
+                    major_level_distance = dist_to_monthly_ema
+                else:
+                    near_major_resistance = True
+                    major_level_type = "M_EMA20"
+                    major_level_distance = dist_to_monthly_ema
+        
+        return {
+            'weekly_high_52w': weekly_high_52w,
+            'weekly_low_52w': weekly_low_52w,
+            'monthly_high_24m': monthly_high_24m,
+            'monthly_low_24m': monthly_low_24m,
+            'weekly_ema_50': weekly_ema_50,
+            'monthly_ema_20': monthly_ema_20,
+            'weekly_trend': weekly_trend,
+            'dist_to_weekly_high': round(dist_to_weekly_high, 2),
+            'dist_to_weekly_low': round(dist_to_weekly_low, 2),
+            'dist_to_monthly_high': round(dist_to_monthly_high, 2),
+            'dist_to_monthly_low': round(dist_to_monthly_low, 2),
+            'dist_to_weekly_ema': round(dist_to_weekly_ema, 2),
+            'dist_to_monthly_ema': round(dist_to_monthly_ema, 2),
+            'near_major_support': near_major_support,
+            'near_major_resistance': near_major_resistance,
+            'major_level_type': major_level_type,
+            'major_level_distance': round(major_level_distance, 2)
+        }
+    except Exception as e:
+        print(f"❌ Macro analysis error: {e}")
+        return None
+
+
+def apply_macro_filter(direction, macro_data, current_score, validation_reasons, current_price):
+    """ใช้ Macro Context กรองสัญญาณ"""
+    if not macro_data:
+        return current_score, direction, validation_reasons
+    
+    new_score = current_score
+    new_direction = direction
+    new_reasons = validation_reasons.copy() if validation_reasons else []
+    
+    # ===== RULE 1: ห้าม SHORT ที่ Major Support =====
+    if macro_data['near_major_support'] and direction == "SHORT":
+        new_score -= 40
+        new_direction = "NONE"
+        new_reasons.append(
+            f"🚫 BLOCKED: SHORT at {macro_data['major_level_type']} "
+            f"(Distance: {macro_data['major_level_distance']:+.2f}%) - "
+            f"ราคาอยู่ใกล้แนวรับใหญ่ ห้าม SHORT!"
+        )
+    
+    # ===== RULE 2: ห้าม LONG ที่ Major Resistance =====
+    elif macro_data['near_major_resistance'] and direction == "LONG":
+        new_score -= 40
+        new_direction = "NONE"
+        new_reasons.append(
+            f"🚫 BLOCKED: LONG at {macro_data['major_level_type']} "
+            f"(Distance: {macro_data['major_level_distance']:+.2f}%) - "
+            f"ราคาอยู่ใกล้แนวต้านใหญ่ ห้าม LONG!"
+        )
+    
+    # ===== RULE 3: Bonus ถ้าเทรดตามภาพใหญ่ =====
+    elif macro_data['near_major_support'] and direction == "LONG":
+        new_score += 15
+        new_reasons.append(
+            f"✅ BONUS: LONG at {macro_data['major_level_type']} - "
+            f"เทรดตามแนวรับใหญ่ +15"
+        )
+    
+    elif macro_data['near_major_resistance'] and direction == "SHORT":
+        new_score += 15
+        new_reasons.append(
+            f"✅ BONUS: SHORT at {macro_data['major_level_type']} - "
+            f"เทรดตามแนวต้านใหญ่ +15"
+        )
+    
+    # ===== RULE 4: Weekly Trend Alignment =====
+    if macro_data['weekly_trend'] == "UPTREND" and direction == "LONG":
+        new_score += 5
+    elif macro_data['weekly_trend'] == "DOWNTREND" and direction == "SHORT":
+        new_score += 5
+    elif macro_data['weekly_trend'] == "UPTREND" and direction == "SHORT":
+        new_score -= 10
+        new_reasons.append(f"⚠️ CONTRA: SHORT ใน Weekly UPTREND -10")
+    elif macro_data['weekly_trend'] == "DOWNTREND" and direction == "LONG":
+        new_score -= 10
+        new_reasons.append(f"⚠️ CONTRA: LONG ใน Weekly DOWNTREND -10")
+    
+       
+    return new_score, new_direction, new_reasons

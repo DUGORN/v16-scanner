@@ -115,10 +115,8 @@ def add_trade(trade_data):
     """เพิ่มเทรดใหม่"""
     df = load_trades()
     
-    # สร้าง ID
     trade_id = len(df) + 1 if len(df) > 0 else 1
     
-    # คำนวณ P&L ถ้ามี exit_price
     pnl_usd = 0
     pnl_pct = 0
     status = "OPEN"
@@ -372,6 +370,24 @@ def analyze_single_coin(symbol):
         total_score += penalty
         breakdown['Validation'] = f"{penalty:+.0f} ({len(validation_reasons)} issues)"
         
+        # 🆕 MACRO CONTEXT FILTER
+        macro_data = scanner.analyze_macro_context(symbol, current_price)
+        
+        if macro_data:
+            total_score, direction, validation_reasons = scanner.apply_macro_filter(
+                direction, macro_data, total_score, validation_reasons, current_price
+            )
+            breakdown['Macro_Filter'] = f"Applied ({macro_data['major_level_type'] or 'None'})"
+        else:
+            macro_data = {
+                'weekly_high_52w': 0, 'weekly_low_52w': 0, 'monthly_high_24m': 0, 'monthly_low_24m': 0,
+                'weekly_ema_50': None, 'monthly_ema_20': None, 'weekly_trend': 'UNKNOWN',
+                'dist_to_weekly_high': 0, 'dist_to_weekly_low': 0, 'dist_to_monthly_high': 0, 'dist_to_monthly_low': 0,
+                'dist_to_weekly_ema': 0, 'dist_to_monthly_ema': 0, 'near_major_support': False,
+                'near_major_resistance': False, 'major_level_type': None, 'major_level_distance': 0
+            }
+            breakdown['Macro_Filter'] = "No Data"
+        
         basic_info = {
             'symbol': symbol,
             'symbol_short': symbol.replace('.P', ''),
@@ -421,7 +437,18 @@ def analyze_single_coin(symbol):
             'penalty': penalty,
             'validation_reasons': validation_reasons,
             'breakdown': breakdown,
-            'basic_info': basic_info
+            'basic_info': basic_info,
+            # 🆕 MACRO FIELDS
+            'macro_data': macro_data,
+            'weekly_high_52w': macro_data['weekly_high_52w'],
+            'weekly_low_52w': macro_data['weekly_low_52w'],
+            'monthly_high_24m': macro_data['monthly_high_24m'],
+            'monthly_low_24m': macro_data['monthly_low_24m'],
+            'weekly_trend': macro_data['weekly_trend'],
+            'near_major_support': macro_data['near_major_support'],
+            'near_major_resistance': macro_data['near_major_resistance'],
+            'major_level_type': macro_data['major_level_type'],
+            'major_level_distance': macro_data['major_level_distance'],
         }
         
         return setup, None
@@ -548,6 +575,8 @@ with tab1:
             'Conf': f"{s['conf_score']:+.1f}",
             'Penalty': s['penalty'],
             'Valid': '✅' if s['penalty'] == 0 else '⚠️',
+            'Macro': '🟢' if s.get('near_major_support') else ('' if s.get('near_major_resistance') else '⚪'),
+            'W_Trend': s.get('weekly_trend', 'N/A'),
             'Price': s['price'],
             'Dist%': s['distance']
         } for s in filtered])
@@ -636,6 +665,36 @@ with tab2:
         else:
             st.markdown(f"📈 **Above PDL:** (+{info['dist_pdl']:.2f}%)")
         
+        # 🆕 MACRO CONTEXT SECTION
+        if 'macro_data' in setup and setup['macro_data']:
+            macro = setup['macro_data']
+            
+            st.markdown("---")
+            st.markdown("### 🌍 MACRO CONTEXT (ภาพใหญ่)")
+            
+            if macro['near_major_support']:
+                st.success(f"🟢 ราคาอยู่ใกล้แนวรับใหญ่: **{macro['major_level_type']}** ({macro['major_level_distance']:+.2f}%)")
+            elif macro['near_major_resistance']:
+                st.error(f"🔴 ราคาอยู่ใกล้แนวต้านใหญ่: **{macro['major_level_type']}** ({macro['major_level_distance']:+.2f}%)")
+            else:
+                st.info("⚪ ราคาอยู่ห่างจาก Major Levels")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Weekly Trend", macro['weekly_trend'])
+                st.metric("52W High", f"{macro['weekly_high_52w']:.4f}")
+                st.metric("52W Low", f"{macro['weekly_low_52w']:.4f}")
+            with col2:
+                st.metric("Dist to 52W High", f"{macro['dist_to_weekly_high']:+.2f}%")
+                st.metric("Dist to 52W Low", f"{macro['dist_to_weekly_low']:+.2f}%")
+                w_ema = macro['weekly_ema_50']
+                st.metric("Weekly EMA 50", f"{w_ema:.4f}" if w_ema else "N/A")
+            with col3:
+                st.metric("Dist to 24M High", f"{macro['dist_to_monthly_high']:+.2f}%")
+                st.metric("Dist to 24M Low", f"{macro['dist_to_monthly_low']:+.2f}%")
+                m_ema = macro['monthly_ema_20']
+                st.metric("Monthly EMA 20", f"{m_ema:.4f}" if m_ema else "N/A")
+        
         st.markdown("---")
         st.markdown("### 📈 24h Statistics")
         change_sign = "+" if info['price_change'] >= 0 else ""
@@ -680,19 +739,34 @@ with tab2:
         st.markdown("---")
         st.markdown("### 📓 บันทึกเทรดนี้")
         if st.button("📝 Log This Trade", use_container_width=True, type="primary"):
-            # ส่งข้อมูลไปหน้า Trade Journal
             st.session_state['trade_from_analyze'] = setup
-            st.session_state['active_tab'] = 2  # Trade Journal tab
+            st.session_state['active_tab'] = 2
             st.success("✅ ไปที่หน้า Trade Journal เพื่อบันทึกรายละเอียด!")
         
         # Prompt สำหรับ Copy
         st.markdown("### 💡 Copy ข้อมูลนี้ไปถาม AI")
+        
+        macro_info = ""
+        if 'macro_data' in setup and setup['macro_data']:
+            m = setup['macro_data']
+            macro_info = f"""
+🌍 MACRO CONTEXT:
+- Weekly Trend: {m['weekly_trend']}
+- 52W High: {m['weekly_high_52w']:.4f} | 52W Low: {m['weekly_low_52w']:.4f}
+- 24M High: {m['monthly_high_24m']:.4f} | 24M Low: {m['monthly_low_24m']:.4f}
+- Near Major Support: {'YES' if m['near_major_support'] else 'NO'}
+- Near Major Resistance: {'YES' if m['near_major_resistance'] else 'NO'}
+- Major Level Type: {m['major_level_type'] or 'None'}
+- Dist to 52W High: {m['dist_to_weekly_high']:+.2f}%
+- Dist to 52W Low: {m['dist_to_weekly_low']:+.2f}%
+"""
+        
         prompt = f"""{info['symbol_short']}
 ราคา: {info['price']:.4f}
 PDH: {info['pdh']:.4f} | PDL: {info['pdl']:.4f}
 High: {info['high_24h']:.4f} | Low: {info['low_24h']:.4f}
 24h Change: {change_sign}{info['price_change']:.4f} ({change_sign}{info['price_change_pct']:.2f}%)
-
+{macro_info}
 📊 V16.1 Analysis:
 - Score: {setup['score']}/100
 - Direction: {setup['direction']}
@@ -703,7 +777,8 @@ High: {info['high_24h']:.4f} | Low: {info['low_24h']:.4f}
 - MACD Cross: {'Bullish' if setup['macd_cross_up'] else 'Bearish' if setup['macd_cross_down'] else 'None'}
 - Divergence: {setup['macd_div']}
 
-💡 ควรเข้า LONG/SHORT หรือไม่? Entry/SL/TP เท่าไหร่?"""
+💡 ควรเข้า LONG/SHORT หรือไม่? Entry/SL/TP เท่าไหร่?
+(วิเคราะห์ภาพใหญ่ Monthly/Weekly ก่อนเสมอ)"""
         
         st.code(prompt, language='text')
 
@@ -714,11 +789,9 @@ High: {info['high_24h']:.4f} | Low: {info['low_24h']:.4f}
 with tab3:
     st.markdown("### 📓 Trade Journal")
     
-    # ฟอร์มเพิ่มเทรดใหม่
     st.markdown("---")
     st.markdown("#### ➕ เพิ่มเทรดใหม่")
     
-    # ถ้ามีข้อมูลจาก Analyze ให้ auto-fill
     prefill = st.session_state.get('trade_from_analyze', None)
     
     with st.form("add_trade_form"):
@@ -739,7 +812,6 @@ with tab3:
             leverage = st.number_input("Leverage (x)", value=75, step=1)
             confidence = st.selectbox("AI Confidence", ["HIGH", "MEDIUM", "LOW"])
         
-        # ข้อมูลเพิ่มเติม
         col1, col2 = st.columns(2)
         with col1:
             exit_price = st.number_input("Exit Price (ถ้าปิดแล้ว)", value=0.0, step=0.0001, format="%.4f")
@@ -784,14 +856,12 @@ with tab3:
                 else:
                     st.error(msg)
     
-    # แสดงรายการเทรด
     st.markdown("---")
     st.markdown("#### 📋 รายการเทรดทั้งหมด")
     
     trades_df = load_trades()
     
     if len(trades_df) > 0:
-        # Filter
         col1, col2, col3 = st.columns(3)
         with col1:
             filter_status = st.multiselect("Filter Status", ["OPEN", "WIN", "LOSS", "BREAKEVEN"], default=["OPEN", "WIN", "LOSS", "BREAKEVEN"])
@@ -806,14 +876,12 @@ with tab3:
         if filter_direction != "All":
             filtered_trades = filtered_trades[filtered_trades['direction'] == filter_direction]
         
-        # แสดงตาราง
         display_df = filtered_trades[['id', 'symbol', 'direction', 'entry_price', 'exit_price', 'pnl_usd', 'pnl_pct', 'status', 'entry_date']].copy()
         display_df['pnl_usd'] = display_df['pnl_usd'].apply(lambda x: f"${x:,.2f}")
         display_df['pnl_pct'] = display_df['pnl_pct'].apply(lambda x: f"{x:+.2f}%")
         
         st.dataframe(display_df, use_container_width=True)
         
-        # ปุ่มลบ
         st.markdown("#### 🗑️ ลบเทรด")
         trade_to_delete = st.selectbox("เลือกเทรดที่จะลบ:", options=filtered_trades['id'].tolist(), format_func=lambda x: f"#{x} - {filtered_trades[filtered_trades['id']==x]['symbol'].values[0]}")
         
@@ -824,7 +892,6 @@ with tab3:
                     st.success(msg)
                     st.rerun()
         
-        # Export CSV
         st.markdown("#### 📥 Export")
         if st.button("📥 Export to CSV", use_container_width=True):
             csv = trades_df.to_csv(index=False).encode('utf-8')
@@ -844,7 +911,6 @@ with tab4:
     if stats['total_trades'] == 0:
         st.info(" ยังไม่มีข้อมูลสถิติ เริ่มบันทึกเทรดเพื่อเห็นสถิติ!")
     else:
-        # Overview Metrics
         st.markdown("#### 📈 Overview")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Total Trades", stats['total_trades'])
@@ -852,7 +918,6 @@ with tab4:
         col3.metric("Total P&L", f"${stats['total_pnl']:,.2f}", delta=f"${stats['total_pnl']:,.2f}")
         col4.metric("Profit Factor", f"{stats['profit_factor']:.2f}")
         
-        # Win/Loss Breakdown
         st.markdown("#### 🎯 Win/Loss Breakdown")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Wins", stats['wins'], delta=f"{stats['avg_win']:+.2f}")
@@ -860,7 +925,6 @@ with tab4:
         col3.metric("Breakeven", stats['breakeven'])
         col4.metric("Open Trades", stats['open'])
         
-        # Performance Metrics
         st.markdown("#### 💰 Performance")
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Best Trade", f"${stats['best_trade']:,.2f}")
@@ -868,7 +932,6 @@ with tab4:
         col3.metric("Avg P&L", f"${stats['avg_pnl']:,.2f}")
         col4.metric("Avg Win", f"${stats['avg_win']:,.2f}")
         
-        # Visual Chart (ถ้ามีข้อมูลพอ)
         if stats['wins'] + stats['losses'] > 0:
             st.markdown("#### 📊 Win/Loss Distribution")
             chart_data = pd.DataFrame({
@@ -877,7 +940,6 @@ with tab4:
             })
             st.bar_chart(chart_data.set_index('Status'))
         
-        # Recent Trades
         st.markdown("#### 📋 Recent Trades")
         trades_df = load_trades()
         if len(trades_df) > 0:
@@ -891,4 +953,4 @@ with tab4:
 st.markdown("---")
 if auto_refresh:
     st.markdown(f"⏰ Auto-refresh: จะสแกนใหม่ใน 15 นาที")
-st.markdown("**V16.1 Scanner** | Pan Sniper + AMC | Built with Streamlit")
+st.markdown("**V16.1 Scanner** | Pan Sniper + AMC + Macro Filter | Built with Streamlit")
