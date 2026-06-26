@@ -11,9 +11,8 @@ st.set_page_config(
     page_title="V16.1 Scanner",
     page_icon="🚀",
     layout="centered",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed"  # ✅ เปลี่ยนเป็น "collapsed"
 )
-
 # ============================================================================
 #  ไฟล์เก็บข้อมูล
 # ============================================================================
