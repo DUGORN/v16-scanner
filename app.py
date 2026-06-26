@@ -10,8 +10,8 @@ import scanner
 st.set_page_config(
     page_title="V16.1 Scanner",
     page_icon="🚀",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="centered",
+    initial_sidebar_state="sidebar"
 )
 
 # ============================================================================
