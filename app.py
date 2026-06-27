@@ -234,11 +234,14 @@ def get_trade_stats():
 def get_24h_ticker(symbol):
     try:
         api_symbol = symbol.replace('.P', '')
-        response = scanner.requests.get(
-            'https://fapi.binance.com/fapi/v1/ticker/24hr',
-            params={'symbol': api_symbol},
-            timeout=10
-        )
+        url = f'https://fapi.binance.com/fapi/v1/ticker/24hr?symbol={api_symbol}'
+        response = requests.get(url, timeout=10)  # ✅ ใช้ requests โดยตรง
+        if response.status_code == 200:
+            return response.json()
+        return None
+    except Exception as e:
+        print(f"Error in get_24h_ticker: {e}")
+        return None
         if response.status_code == 200:
             return response.json()
         else:
