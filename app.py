@@ -237,8 +237,13 @@ def get_24h_ticker(symbol):
             params={'symbol': api_symbol},
             timeout=10
         )
-        return response.json()
-    except:
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"API Error: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"Error in get_24h_ticker: {e}")
         return None
 
 # ============================================================================
