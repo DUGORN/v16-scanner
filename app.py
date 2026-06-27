@@ -11,8 +11,9 @@ st.set_page_config(
     page_title="V16.1 Scanner",
     page_icon="🚀",
     layout="centered",
-    initial_sidebar_state="collapsed"  # ✅ เปลี่ยนเป็น "collapsed"
+    initial_sidebar_state="collapsed"
 )
+
 # ============================================================================
 #  ไฟล์เก็บข้อมูล
 # ============================================================================
@@ -252,21 +253,33 @@ def get_24h_ticker(symbol):
 
 def analyze_single_coin(symbol):
     try:
+        print(f"\n🔍 ===== Analyzing: {symbol} =====")
         symbol = symbol.strip().upper()
         if not symbol.endswith('.P'):
             symbol += '.P'
         
+        print(f"📡 Fetching ticker data...")
         ticker_24h = get_24h_ticker(symbol)
         
+        print(f"📊 Fetching klines data...")
         tf_4h = scanner.get_klines(symbol, '4h', 100)
         tf_1h = scanner.get_klines(symbol, '1h', 100)
         tf_15m = scanner.get_klines(symbol, '15m', 350)
         tf_1d = scanner.get_klines(symbol, '1d', 30)
         
+        print(f"✅ Data received:")
+        print(f"   - tf_4h: {len(tf_4h) if tf_4h else 0} candles")
+        print(f"   - tf_1h: {len(tf_1h) if tf_1h else 0} candles")
+        print(f"   - tf_15m: {len(tf_15m) if tf_15m else 0} candles")
+        print(f"   - tf_1d: {len(tf_1d) if tf_1d else 0} candles")
+        
         if not all([tf_4h, tf_1h, tf_15m]):
-            return None, " ไม่สามารถดึงข้อมูลได้"
+            error_msg = "❌ ไม่สามารถดึงข้อมูลได้ - API อาจมีปัญหาชั่วคราว"
+            print(f"⚠️ {error_msg}")
+            return None, error_msg
         
         current_price = float(tf_15m[-1][4])
+        print(f"💰 Current price: {current_price}")
         
         if tf_1d and len(tf_1d) >= 2:
             pdh = float(tf_1d[-2][2])
@@ -287,6 +300,7 @@ def analyze_single_coin(symbol):
         
         is_xau = 'XAU' in symbol or 'GOLD' in symbol
         
+        print(f"🔧 Calculating indicators...")
         htf_bias, htf_score = scanner.get_htf_bias(tf_4h, tf_1h)
         sweep_data = scanner.detect_liquidity_sweep(tf_15m, is_xau)
         volume_ratio = scanner.calculate_volume_ratio(tf_15m)
@@ -375,6 +389,7 @@ def analyze_single_coin(symbol):
         breakdown['Validation'] = f"{penalty:+.0f} ({len(validation_reasons)} issues)"
         
         # 🆕 MACRO CONTEXT FILTER
+        print(f"🌍 Analyzing macro context...")
         macro_data = scanner.analyze_macro_context(symbol, current_price)
         
         if macro_data:
@@ -382,6 +397,7 @@ def analyze_single_coin(symbol):
                 direction, macro_data, total_score, validation_reasons, current_price
             )
             breakdown['Macro_Filter'] = f"Applied ({macro_data['major_level_type'] or 'None'})"
+            print(f"✅ Macro filter applied")
         else:
             macro_data = {
                 'weekly_high_52w': 0, 'weekly_low_52w': 0, 'monthly_high_24m': 0, 'monthly_low_24m': 0,
@@ -391,6 +407,7 @@ def analyze_single_coin(symbol):
                 'near_major_resistance': False, 'major_level_type': None, 'major_level_distance': 0
             }
             breakdown['Macro_Filter'] = "No Data"
+            print(f"⚠️ Macro data not available")
         
         basic_info = {
             'symbol': symbol,
@@ -455,10 +472,18 @@ def analyze_single_coin(symbol):
             'major_level_distance': macro_data['major_level_distance'],
         }
         
+        print(f"✅ Analysis complete! Score: {total_score:.1f}/100")
+        print(f"🎯 Direction: {direction}")
+        print(f"===== End Analysis =====\n")
+        
         return setup, None
         
     except Exception as e:
-        return None, f"❌ Error: {str(e)}"
+        error_msg = f"❌ Error: {str(e)}"
+        print(f"🚨 {error_msg}")
+        import traceback
+        traceback.print_exc()
+        return None, error_msg
 
 # ============================================================================
 #  Sidebar
