@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 import os
 import scanner
+import requests  # ✅ เพิ่มบรรทัดนี้
 
 # ตั้งค่าหน้าเว็บ
 st.set_page_config(
