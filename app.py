@@ -239,10 +239,7 @@ def get_24h_ticker(symbol):
         if response.status_code == 200:
             return response.json()
         return None
-    except Exception as e:
-        print(f"Error in get_24h_ticker: {e}")
-        return None
-
+        
     except Exception as e:
         print(f"Error in get_24h_ticker: {e}")
         return None
