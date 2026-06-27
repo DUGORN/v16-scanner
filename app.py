@@ -979,6 +979,35 @@ with tab4:
         if len(trades_df) > 0:
             recent = trades_df.tail(10)[['id', 'symbol', 'direction', 'entry_price', 'exit_price', 'pnl_usd', 'pnl_pct', 'status', 'entry_date']]
             st.dataframe(recent, use_container_width=True)
+# ทดสอบ Network
+if st.button("🧪 Test API Connection"):
+    try:
+        import requests
+        st.write("Testing connection...")
+        
+        # ทดสอบ 1: Google
+        test1 = requests.get("https://www.google.com", timeout=5)
+        st.success(f"✅ Google: {test1.status_code}")
+        
+        # ทดสอบ 2: Binance
+        test2 = requests.get("https://fapi.binance.com/fapi/v1/time", timeout=5)
+        st.success(f"✅ Binance: {test2.status_code}")
+        
+        # ทดสอบ 3: Klines
+        test3 = requests.get(
+            "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=15m&limit=1",
+            timeout=5
+        )
+        if test3.status_code == 200:
+            st.success(f"✅ Klines API: {test3.status_code}")
+            st.json(test3.json())
+        else:
+            st.error(f"❌ Klines API: {test3.status_code}")
+            
+    except Exception as e:
+        st.error(f"❌ Error: {e}")
+        import traceback
+        st.code(traceback.format_exc())
 
 # ============================================================================
 #  Footer
