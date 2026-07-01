@@ -5,16 +5,14 @@ import time
 from datetime import datetime
 import os
 import scanner
-import requests  # ✅ ต้องมีบรรทัดนี้!
 
 # ตั้งค่าหน้าเว็บ
 st.set_page_config(
     page_title="V16.1 Scanner",
     page_icon="🚀",
     layout="centered",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed"  # ✅ เปลี่ยนเป็น "collapsed"
 )
-
 # ============================================================================
 #  ไฟล์เก็บข้อมูล
 # ============================================================================
@@ -234,22 +232,13 @@ def get_trade_stats():
 def get_24h_ticker(symbol):
     try:
         api_symbol = symbol.replace('.P', '')
-        url = f'https://fapi.binance.com/fapi/v1/ticker/24hr?symbol={api_symbol}'
-        response = requests.get(url, timeout=10)  # ✅ เปลี่ยนจาก scanner.requests.get() เป็น requests.get()
-        if response.status_code == 200:
-            return response.json()
-        return None
-        
-    except Exception as e:
-        print(f"Error in get_24h_ticker: {e}")
-        return None
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(f"API Error: {response.status_code}")
-            return None
-    except Exception as e:
-        print(f"Error in get_24h_ticker: {e}")
+        response = scanner.requests.get(
+            'https://fapi.binance.com/fapi/v1/ticker/24hr',
+            params={'symbol': api_symbol},
+            timeout=10
+        )
+        return response.json()
+    except:
         return None
 
 # ============================================================================
@@ -258,33 +247,21 @@ def get_24h_ticker(symbol):
 
 def analyze_single_coin(symbol):
     try:
-        print(f"\n🔍 ===== Analyzing: {symbol} =====")
         symbol = symbol.strip().upper()
         if not symbol.endswith('.P'):
             symbol += '.P'
         
-        print(f"📡 Fetching ticker data...")
         ticker_24h = get_24h_ticker(symbol)
         
-        print(f"📊 Fetching klines data...")
         tf_4h = scanner.get_klines(symbol, '4h', 100)
         tf_1h = scanner.get_klines(symbol, '1h', 100)
         tf_15m = scanner.get_klines(symbol, '15m', 350)
         tf_1d = scanner.get_klines(symbol, '1d', 30)
         
-        print(f"✅ Data received:")
-        print(f"   - tf_4h: {len(tf_4h) if tf_4h else 0} candles")
-        print(f"   - tf_1h: {len(tf_1h) if tf_1h else 0} candles")
-        print(f"   - tf_15m: {len(tf_15m) if tf_15m else 0} candles")
-        print(f"   - tf_1d: {len(tf_1d) if tf_1d else 0} candles")
-        
         if not all([tf_4h, tf_1h, tf_15m]):
-            error_msg = "❌ ไม่สามารถดึงข้อมูลได้ - API อาจมีปัญหาชั่วคราว"
-            print(f"⚠️ {error_msg}")
-            return None, error_msg
+            return None, " ไม่สามารถดึงข้อมูลได้"
         
         current_price = float(tf_15m[-1][4])
-        print(f"💰 Current price: {current_price}")
         
         if tf_1d and len(tf_1d) >= 2:
             pdh = float(tf_1d[-2][2])
@@ -305,7 +282,6 @@ def analyze_single_coin(symbol):
         
         is_xau = 'XAU' in symbol or 'GOLD' in symbol
         
-        print(f"🔧 Calculating indicators...")
         htf_bias, htf_score = scanner.get_htf_bias(tf_4h, tf_1h)
         sweep_data = scanner.detect_liquidity_sweep(tf_15m, is_xau)
         volume_ratio = scanner.calculate_volume_ratio(tf_15m)
@@ -394,7 +370,6 @@ def analyze_single_coin(symbol):
         breakdown['Validation'] = f"{penalty:+.0f} ({len(validation_reasons)} issues)"
         
         # 🆕 MACRO CONTEXT FILTER
-        print(f"🌍 Analyzing macro context...")
         macro_data = scanner.analyze_macro_context(symbol, current_price)
         
         if macro_data:
@@ -402,7 +377,6 @@ def analyze_single_coin(symbol):
                 direction, macro_data, total_score, validation_reasons, current_price
             )
             breakdown['Macro_Filter'] = f"Applied ({macro_data['major_level_type'] or 'None'})"
-            print(f"✅ Macro filter applied")
         else:
             macro_data = {
                 'weekly_high_52w': 0, 'weekly_low_52w': 0, 'monthly_high_24m': 0, 'monthly_low_24m': 0,
@@ -412,7 +386,6 @@ def analyze_single_coin(symbol):
                 'near_major_resistance': False, 'major_level_type': None, 'major_level_distance': 0
             }
             breakdown['Macro_Filter'] = "No Data"
-            print(f"⚠️ Macro data not available")
         
         basic_info = {
             'symbol': symbol,
@@ -477,18 +450,10 @@ def analyze_single_coin(symbol):
             'major_level_distance': macro_data['major_level_distance'],
         }
         
-        print(f"✅ Analysis complete! Score: {total_score:.1f}/100")
-        print(f"🎯 Direction: {direction}")
-        print(f"===== End Analysis =====\n")
-        
         return setup, None
         
     except Exception as e:
-        error_msg = f"❌ Error: {str(e)}"
-        print(f"🚨 {error_msg}")
-        import traceback
-        traceback.print_exc()
-        return None, error_msg
+        return None, f"❌ Error: {str(e)}"
 
 # ============================================================================
 #  Sidebar
@@ -979,35 +944,6 @@ with tab4:
         if len(trades_df) > 0:
             recent = trades_df.tail(10)[['id', 'symbol', 'direction', 'entry_price', 'exit_price', 'pnl_usd', 'pnl_pct', 'status', 'entry_date']]
             st.dataframe(recent, use_container_width=True)
-# ทดสอบ Network
-if st.button("🧪 Test API Connection"):
-    try:
-        import requests
-        st.write("Testing connection...")
-        
-        # ทดสอบ 1: Google
-        test1 = requests.get("https://www.google.com", timeout=5)
-        st.success(f"✅ Google: {test1.status_code}")
-        
-        # ทดสอบ 2: Binance
-        test2 = requests.get("https://fapi.binance.com/fapi/v1/time", timeout=5)
-        st.success(f"✅ Binance: {test2.status_code}")
-        
-        # ทดสอบ 3: Klines
-        test3 = requests.get(
-            "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=15m&limit=1",
-            timeout=5
-        )
-        if test3.status_code == 200:
-            st.success(f"✅ Klines API: {test3.status_code}")
-            st.json(test3.json())
-        else:
-            st.error(f"❌ Klines API: {test3.status_code}")
-            
-    except Exception as e:
-        st.error(f"❌ Error: {e}")
-        import traceback
-        st.code(traceback.format_exc())
 
 # ============================================================================
 #  Footer
